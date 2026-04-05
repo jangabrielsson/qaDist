@@ -195,7 +195,8 @@ function QuickApp:fetchManifest(cb)
 					url = trimSlash(tostring(qa.url)),
 					fqa = tostring(qa.fqa or ""),
 					versionFile = tostring(qa.versionFile or ""),
-					versionPattern = tostring(qa.versionPattern or "")
+					versionPattern = tostring(qa.versionPattern or ""),
+					ignore = qa.ignore or {}
 				}
 			end
 		end
@@ -619,7 +620,7 @@ function QuickApp:createNewInstance(entry, tag, cb)
 	end)
 end
 
-function QuickApp:extractFilesFromFqa(fqaBlob)
+function QuickApp:extractFilesFromFqa(fqaBlob, ignoreList)
 	local decoded, err = safeDecodeJson(fqaBlob)
 	if not decoded then
 		return nil, err
@@ -630,21 +631,35 @@ function QuickApp:extractFilesFromFqa(fqaBlob)
 		return nil, "fqa missing files[]"
 	end
 
+	-- Build ignore map for faster lookup
+	local ignoreMap = {}
+	if type(ignoreList) == "table" then
+		for _, fileName in ipairs(ignoreList) do
+			ignoreMap[tostring(fileName)] = true
+		end
+	end
+
 	local normalized = {}
 	for _, file in ipairs(files) do
 		if type(file) == "table" and file.name and file.content then
-			normalized[#normalized + 1] = {
-				name = tostring(file.name),
-				type = tostring(file.type or "lua"),
-				isMain = file.isMain == true,
-				isOpen = file.isOpen == true,
-				content = tostring(file.content)
-			}
+			local fileName = tostring(file.name)
+			-- Skip ignored files
+			if not ignoreMap[fileName] then
+				normalized[#normalized + 1] = {
+					name = fileName,
+					type = tostring(file.type or "lua"),
+					isMain = file.isMain == true,
+					isOpen = file.isOpen == true,
+					content = tostring(file.content)
+				}
+			else
+				self:logStep("Ignored file in fqa", fileName)
+			end
 		end
 	end
 
 	if #normalized == 0 then
-		return nil, "fqa files[] empty"
+		return nil, "fqa files[] empty or all files ignored"
 	end
 
 	return normalized
@@ -661,7 +676,8 @@ function QuickApp:updateInstalledInstance(deviceId, entry, tag, cb)
 		end
 
 		self:logStep("Parsing fqa for update")
-		local wantedFiles, parseErr = self:extractFilesFromFqa(payloadOrErr)
+		local ignoreList = entry.ignore or {}
+		local wantedFiles, parseErr = self:extractFilesFromFqa(payloadOrErr, ignoreList)
 		if not wantedFiles then
 			self:logWarn("Update-existing parse failed", parseErr)
 			cb(false, parseErr)
@@ -674,6 +690,13 @@ function QuickApp:updateInstalledInstance(deviceId, entry, tag, cb)
 			return
 		end
 		self:logStep("Loaded existing files", "count=" .. tostring(#existing), "incoming=" .. tostring(#wantedFiles))
+		
+		-- Build ignore map for deletion check
+		local ignoreMap = {}
+		for _, fileName in ipairs(ignoreList) do
+			ignoreMap[tostring(fileName)] = true
+		end
+		
 		local existingByName = {}
 		for _, file in ipairs(existing) do
 			existingByName[tostring(file.name)] = true
@@ -716,7 +739,7 @@ function QuickApp:updateInstalledInstance(deviceId, entry, tag, cb)
 
 		for _, file in ipairs(existing) do
 			local fileName = tostring(file.name)
-			if not wantedByName[fileName] then
+			if not wantedByName[fileName] and not ignoreMap[fileName] then
 				self:logStep("Delete file", fileName)
 				local _, deleteStatus, deleteErr = self:apiCall("delete", "/quickApp/" .. tostring(deviceId) .. "/files/" .. encodeUriComponent(fileName))
 				if deleteStatus > 206 then
@@ -724,6 +747,8 @@ function QuickApp:updateInstalledInstance(deviceId, entry, tag, cb)
 					return
 				end
 				deletedCount = deletedCount + 1
+			elseif ignoreMap[fileName] then
+				self:logStep("Skipping delete of ignored file", fileName)
 			end
 		end
 

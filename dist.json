@@ -4,8 +4,10 @@
   "quickApps": [
     {
       "name": "Yahue",
+      "uid": "UPD896846032517896",
       "description": "This is a quick app that allows you to control your Philips Hue devices as you like.creates QuickApps for your Philips Hue devices.",
-      "url": "https://api.github.com/repos/jangabrielsson/Yahue/"
+      "url": "https://api.github.com/repos/jangabrielsson/Yahue/",
+      "fqa": "dist/Yahue.fqa"
     }
   ]
 }

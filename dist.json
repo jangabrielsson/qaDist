@@ -9,7 +9,10 @@
       "url": "https://api.github.com/repos/jangabrielsson/Yahue/",
       "fqa": "dist/Yahue.fqa",
       "versionFile": "App",
-      "versionPattern": "local VERSION = \"([^\"]+)\""
+      "versionPattern": "local VERSION = \"([^\"]+)\"",
+      "ignore": [
+        "userconfig"
+      ]
     }
   ]
 }

@@ -32,7 +32,7 @@
       "uid": "UPD896846032517893",
       "description": "Bridge QuickApp for the Ikea Dirigera hub. Create QuickApps for your Dirigera devices.",
       "url": "https://api.github.com/repos/jangabrielsson/Dirigera/",
-      "fqa": "Dirigera.fqa",
+      "fqa": "dist/Dirigera.fqa",
       "versionFile": "main",
       "versionPattern": "local VERSION = \"([^\"]+)\"",
       "ignore": [

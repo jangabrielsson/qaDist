@@ -75,6 +75,7 @@ To distribute your QuickApps via QA Dist Manager, host a `dist.json` file in you
 | Field | Required | Description |
 |-------|----------|-------------|
 | `author` | Yes | Your name or organisation. Shown in the QA Dist Manager UI. |
+| `minVersion` | No | Minimum QA Dist Manager version required to use this manifest (e.g. `"0.1.2"`). If the installed QADist is older, the manifest is skipped with a warning. Omit or leave blank for no restriction. |
 | `quickApps` | Yes | Array of QuickApp entries. |
 | `name` | Yes | Display name shown in the selector. |
 | `uid` | Yes | A stable unique identifier for this QuickApp. Must never change between releases. Used to match already-installed instances on the HC3. Any unique string works — e.g. `"UPD896846032517896"`. |

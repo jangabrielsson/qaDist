@@ -14,9 +14,9 @@
 --%%u:{label="actionStatus",text="Status: idle"}
 
 --%%proxy:true
---%%save:QADist_v0_1_2.fqa
+--%%save:QADist_v0_1_3.fqa
 
-local VERSION = "0.1.2"
+local VERSION = "0.1.3"
 
 local NEW_INSTANCE = "__new__"
 
@@ -52,6 +52,19 @@ local function matchesIgnore(fileName, ignoreList)
 		if ok and matched then return true end
 	end
 	return false
+end
+
+local function parseVer(v)
+	local a, b, c = tostring(v):match("^v?(%d+)%.(%d+)%.?(%d*)")
+	return tonumber(a) or 0, tonumber(b) or 0, tonumber(c) or 0
+end
+
+local function versionAtLeast(have, need)
+	local hMaj, hMin, hPat = parseVer(have)
+	local nMaj, nMin, nPat = parseVer(need)
+	if hMaj ~= nMaj then return hMaj > nMaj end
+	if hMin ~= nMin then return hMin > nMin end
+	return hPat >= nPat
 end
 
 local function safeDecodeJson(blob)
@@ -258,6 +271,16 @@ function QuickApp:fetchManifest(cb)
 				lastErr = parseErr
 				fetchNext(index + 1)
 				return
+			end
+
+			if type(payload.minVersion) == "string" and payload.minVersion ~= "" then
+				if not versionAtLeast(VERSION, payload.minVersion) then
+					self:logWarn("Manifest", url, "requires QADist v" .. payload.minVersion ..
+						" but installed is v" .. VERSION .. " — skipping")
+					lastErr = "requires QADist v" .. payload.minVersion
+					fetchNext(index + 1)
+					return
+				end
 			end
 
 			local quickApps = payload.quickApps

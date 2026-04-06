@@ -13,7 +13,7 @@
 --%%u:{{button="refreshBtn",text="Refresh",onReleased="onRefresh"},{button="installBtn",text="Apply",onReleased="onApply"}}
 --%%u:{label="actionStatus",text="Status: idle"}
 
---%%proxy:true
+-- %%proxy:true
 --%%save:QADist_v0_1_4.fqa
 
 local VERSION = "0.1.4"

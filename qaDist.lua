@@ -499,10 +499,13 @@ function QuickApp:fetchReleasesForEntry(entry, cb)
 	end)
 end
 
+local MAX_RELEASES = 5
+
 function QuickApp:commitReleaseOptions(uid, releases)
 	self.releasesByUid[uid] = releases
 	local options = {}
-	for _, release in ipairs(releases) do
+	for i, release in ipairs(releases) do
+		if i > MAX_RELEASES then break end
 		options[#options + 1] = {
 			type = "option",
 			text = release.name,

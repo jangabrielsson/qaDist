@@ -91,6 +91,48 @@ QA Dist Manager fetches the list of available versions by calling the GitHub rel
 
 The `.fqa` file must exist at the tagged commit under the path given in `fqa`.
 
+#### How to create a release on GitHub (recommended)
+
+A **release** is the most visible way to publish a version. It appears on your repo's front page and lets you attach files and release notes.
+
+1. Go to your repository on GitHub.
+2. In the right-hand sidebar, click **Releases** (or go to `https://github.com/<owner>/<repo>/releases`).
+3. Click **Draft a new release**.
+4. In the **Choose a tag** field, type a new version string such as `v1.0.0` and select **Create new tag: v1.0.0 on publish**.
+5. Fill in a **Release title** (e.g. `Version 1.0.0`) and optionally add release notes.
+6. Make sure your `.fqa` file is already committed and pushed to the branch you're releasing from (usually `main`).
+7. Click **Publish release**.
+
+> The tag name becomes the value shown in the Release dropdown inside QA Dist Manager. Use a consistent naming scheme like `v1.0.0`, `v1.1.0`, etc.
+
+#### How to create a tag only (lightweight alternative)
+
+If you prefer not to write release notes, you can push a plain git tag. QA Dist Manager will find it via the tags fallback.
+
+Using the GitHub web UI:
+1. Go to your repository → **Code** tab.
+2. Click the branch/tag dropdown (top-left, shows `main` by default).
+3. Type a new tag name such as `v1.0.0` in the search box.
+4. Click **Create tag: v1.0.0 on main** (or whatever branch is current).
+
+Using the command line:
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+#### Versioning convention
+
+It is recommended to use [Semantic Versioning](https://semver.org/): `vMAJOR.MINOR.PATCH`
+
+| Part | When to increment |
+|------|-------------------|
+| MAJOR | Breaking changes (e.g. removed user-config keys) |
+| MINOR | New features, backwards compatible |
+| PATCH | Bug fixes only |
+
+Examples: `v1.0.0`, `v1.2.3`, `v2.0.0`
+
 ### Generating a UID
 
 A UID is just a string that uniquely identifies your QuickApp. You can use any method:

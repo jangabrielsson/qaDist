@@ -3,14 +3,20 @@
 --%%description:Install, upgrade, downgrade, or create QuickApps from a GitHub manifest.
 --%%var:manifestUrl="https://raw.githubusercontent.com/jangabrielsson/qaDist/main/dist.json"
 --%%var:githubToken=""
+--%%u:{label="titleLabel",text="QA Dist Manager"}
 --%%u:{label="manifestStatus",text="Manifest: not loaded"}
 --%%u:{select="qaSelect",text="QuickApp",value="",onToggled="onQaSelected",options={{type='option',text='(load manifest first)',value=''}}}
+--%%u:{label="qaAuthor",text="Author: "}
+--%%u:{label="qaDescription",text=""}
 --%%u:{select="installedSelect",text="Installed",value="",onToggled="onInstalledSelected",options={{type='option',text='(select QA first)',value=''}}}
 --%%u:{select="releaseSelect",text="Release",value="",onToggled="onReleaseSelected",options={{type='option',text='(select QA first)',value=''}}}
 --%%u:{{button="refreshBtn",text="Refresh",onReleased="onRefresh"},{button="installBtn",text="Apply",onReleased="onApply"}}
 --%%u:{label="actionStatus",text="Status: idle"}
 
 --%%proxy:true
+--%%save:QADist_v0_1_0.fqa
+
+local VERSION = "0.1.0"
 
 local NEW_INSTANCE = "__new__"
 
@@ -50,6 +56,37 @@ local function safeDecodeJson(blob)
 	return decoded
 end
 
+local function markArray(t) if type(t)=='table' then json.initArray(t) end end
+
+local arrProps = {values=true, options=true, args=true, actions=true}
+local function markRec(t)
+  if type(t)=='table' then
+    for k,v in pairs(t) do
+      if type(v)=='table' and next(v)==nil then
+        if arrProps[k] then
+          json.initArray(v)
+        else
+          --print("Prop with empty table value treated as object:", k)
+        end
+      else markRec(v)
+      end
+    end
+  end
+end
+
+local function arrayifyFqa(fqa)
+  markArray(fqa.initialInterfaces)
+  local props = fqa.initialProperties
+  if type(props) == "table" then
+    markArray(props.quickAppVariables)
+    markArray(props.uiView)
+    markArray(props.uiCallbacks)
+    markArray(props.supportedDeviceRoles)
+    markRec(props.uiView)
+    markRec(props.viewLayout)
+  end
+  return fqa
+end
 
 function QuickApp:onInit()
 	self.manifest = {}
@@ -61,6 +98,7 @@ function QuickApp:onInit()
 	self.releasesByUid = {}
 	self.installedByUid = {}
 
+	self:updateView("titleLabel", "text", "QA Dist Manager v" .. VERSION)
 	self:refreshAll()
 end
 
@@ -157,59 +195,94 @@ function QuickApp:refreshAll()
 end
 
 function QuickApp:fetchManifest(cb)
-	local manifestUrl = self:getVariable("manifestUrl")
-	if manifestUrl == "" then
-		cb(false, "manifestUrl is empty")
+	-- Collect all QA variables whose name starts with "manifest"
+	local vars = self.properties.quickAppVariables or {}
+	local manifestUrls = {}
+	for _, v in ipairs(vars) do
+		if type(v.name) == "string" and v.name:sub(1, 8):lower() == "manifest"
+		   and type(v.value) == "string" and v.value ~= "" then
+			manifestUrls[#manifestUrls + 1] = v.value
+			self:logStep("Found manifest var", v.name, "=", v.value)
+		end
+	end
+
+	if #manifestUrls == 0 then
+		cb(false, "no variables starting with 'manifest' found")
 		return
 	end
 
-	self:httpGet(manifestUrl, self:githubHeaders(), function(httpErr, status, body)
-		if httpErr then
-			cb(false, "http error: " .. httpErr)
-			return
-		end
-		if status ~= 200 then
-			cb(false, "http status " .. tostring(status))
-			return
-		end
+	-- Fetch all manifest URLs sequentially and merge results, deduplicating by uid
+	local allNormalized = {}
+	local seenUids = {}
+	local lastErr = nil
 
-		local payload, parseErr = safeDecodeJson(body)
-		if not payload then
-			cb(false, parseErr)
-			return
-		end
-
-		local normalized = {}
-		local quickApps = payload.quickApps
-		if type(quickApps) ~= "table" then
-			cb(false, "manifest missing quickApps[]")
-			return
-		end
-
-		for _, qa in ipairs(quickApps) do
-			if type(qa) == "table" and qa.uid and qa.name and qa.url then
-				normalized[#normalized + 1] = {
-					uid = tostring(qa.uid),
-					name = tostring(qa.name),
-					description = tostring(qa.description or ""),
-					url = trimSlash(tostring(qa.url)),
-					fqa = tostring(qa.fqa or ""),
-					versionFile = tostring(qa.versionFile or ""),
-					versionPattern = tostring(qa.versionPattern or ""),
-					ignore = qa.ignore or {}
-				}
+	local function fetchNext(index)
+		if index > #manifestUrls then
+			if #allNormalized == 0 then
+				cb(false, lastErr or "no valid quickApps entries found in any manifest")
+				return
 			end
-		end
-
-		if #normalized == 0 then
-			cb(false, "manifest has no valid quickApps entries")
+			self.manifest = { quickApps = allNormalized }
+			self.catalog = allNormalized
+			cb(true)
 			return
 		end
 
-		self.manifest = payload
-		self.catalog = normalized
-		cb(true)
-	end)
+		local url = manifestUrls[index]
+		self:httpGet(url, self:githubHeaders(), function(httpErr, status, body)
+			if httpErr then
+				self:logWarn("Manifest fetch error", url, httpErr)
+				lastErr = "http error: " .. httpErr
+				fetchNext(index + 1)
+				return
+			end
+			if status ~= 200 then
+				self:logWarn("Manifest fetch bad status", url, tostring(status))
+				lastErr = "http status " .. tostring(status)
+				fetchNext(index + 1)
+				return
+			end
+
+			local payload, parseErr = safeDecodeJson(body)
+			if not payload then
+				self:logWarn("Manifest parse failed", url, parseErr)
+				lastErr = parseErr
+				fetchNext(index + 1)
+				return
+			end
+
+			local quickApps = payload.quickApps
+			local added = 0
+			if type(quickApps) == "table" then
+				for _, qa in ipairs(quickApps) do
+					if type(qa) == "table" and qa.uid and qa.name and qa.url then
+						local uid = tostring(qa.uid)
+						if not seenUids[uid] then
+							seenUids[uid] = true
+							allNormalized[#allNormalized + 1] = {
+								uid = uid,
+								name = tostring(qa.name),
+								description = tostring(qa.description or ""),
+								author = tostring(payload.author or ""),
+								url = trimSlash(tostring(qa.url)),
+								fqa = tostring(qa.fqa or ""),
+								versionFile = tostring(qa.versionFile or ""),
+								versionPattern = tostring(qa.versionPattern or ""),
+								ignore = qa.ignore or {}
+							}
+							added = added + 1
+						else
+							self:logStep("Skipping duplicate uid", uid, "from", url)
+						end
+					end
+				end
+			end
+			self:logStep("Loaded manifest", url, "added=" .. tostring(added))
+			fetchNext(index + 1)
+		end)
+	end
+
+	fetchNext(1)
 end
 
 function QuickApp:selectedCatalogEntry()
@@ -241,6 +314,8 @@ end
 function QuickApp:refreshInstalledAndReleases()
 	local entry = self:selectedCatalogEntry()
 	if not entry then
+		self:updateView("qaAuthor", "text", "Author: ")
+		self:updateView("qaDescription", "text", "")
 		self:updateSelectOptions("installedSelect", {
 			{ type = "option", text = "(select QA first)", value = "" }
 		}, "")
@@ -250,6 +325,9 @@ function QuickApp:refreshInstalledAndReleases()
 		self:setStatus("select a QuickApp")
 		return
 	end
+
+	self:updateView("qaAuthor", "text", "Author: " .. (entry.author or ""))
+	self:updateView("qaDescription", "text", entry.description)
 
 	self:loadInstalledForUid(entry.uid)
 	self:fetchReleasesForEntry(entry, function(ok, err)
@@ -758,6 +836,82 @@ function QuickApp:updateInstalledInstance(deviceId, entry, tag, cb)
 			"updated=" .. tostring(updatedCount),
 			"deleted=" .. tostring(deletedCount)
 		)
+
+    local fqa, fqaErr = safeDecodeJson(payloadOrErr)
+    if not fqa then
+      self:logWarn("UI/interface update skipped: fqa decode failed", fqaErr)
+    else
+      arrayifyFqa(fqa)
+
+      -- Sync interfaces
+      local wantedInterfaces = {}
+      if type(fqa.initialInterfaces) == "table" then
+        for _, iface in ipairs(fqa.initialInterfaces) do
+          wantedInterfaces[tostring(iface)] = true
+        end
+      end
+      local currentDev = self:apiCall("get", "/devices/" .. tostring(deviceId))
+      local currentInterfaces = {}
+      if type(currentDev) == "table" and type(currentDev.interfaces) == "table" then
+        for _, iface in ipairs(currentDev.interfaces) do
+          currentInterfaces[tostring(iface)] = true
+        end
+      end
+
+      local toAdd = {}
+      for iface in pairs(wantedInterfaces) do
+        if not currentInterfaces[iface] then
+          toAdd[#toAdd + 1] = iface
+        end
+      end
+      -- "quickApp" is a system-managed interface added by HC3 to all QAs; never remove it
+      local systemInterfaces = { quickApp = true }
+      local toRemove = {}
+      for iface in pairs(currentInterfaces) do
+        if not wantedInterfaces[iface] and not systemInterfaces[iface] then
+          toRemove[#toRemove + 1] = iface
+        end
+      end
+
+      if #toAdd > 0 then
+        self:logStep("Adding interfaces", table.concat(toAdd, ", "))
+        local _, addStatus, addErr = self:apiCall("post", "/devices/addInterface", { devicesId = {deviceId}, interfaces = toAdd })
+        if addStatus > 206 then
+          self:logWarn("Add interfaces failed", "status=" .. tostring(addStatus), tostring(addErr))
+        end
+      end
+      if #toRemove > 0 then
+        self:logStep("Removing interfaces", table.concat(toRemove, ", "))
+        local _, remStatus, remErr = self:apiCall("post", "/devices/deleteInterface", { devicesId = {deviceId}, interfaces = toRemove })
+        if remStatus > 206 then
+          self:logWarn("Remove interfaces failed", "status=" .. tostring(remStatus), tostring(remErr))
+        end
+      end
+
+      -- Sync UI properties
+      local uiProps = {
+        "useUiView",
+        "useEmbededView",
+        "uiView",
+        "uiCallbacks",
+        "viewLayout"
+      }
+      local props = {}
+      for _, prop in ipairs(uiProps) do
+        if fqa.initialProperties and fqa.initialProperties[prop] ~= nil then
+          props[prop] = fqa.initialProperties[prop]
+        end
+      end
+      if next(props) then
+        self:logStep("Updating UI properties", "deviceId=" .. tostring(deviceId))
+        local _, uiStatus, uiErr = self:apiCall("put", "/devices/" .. tostring(deviceId), { properties = props })
+        if uiStatus > 206 then
+          self:logWarn("UI properties update failed", "status=" .. tostring(uiStatus), tostring(uiErr))
+        else
+          self:logStep("UI properties updated")
+        end
+      end
+    end
 
 		cb(true, "applied release " .. tostring(tag) .. " to #" .. tostring(deviceId))
 	end)

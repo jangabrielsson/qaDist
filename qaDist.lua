@@ -14,9 +14,9 @@
 --%%u:{label="actionStatus",text="Status: idle"}
 
 --%%proxy:true
---%%save:QADist_v0_1_3.fqa
+--%%save:QADist_v0_1_4.fqa
 
-local VERSION = "0.1.3"
+local VERSION = "0.1.4"
 
 local NEW_INSTANCE = "__new__"
 
@@ -100,7 +100,7 @@ local function safeDecodeJson(blob)
 	return decoded
 end
 
-local function markArray(t) if type(t)=='table' then json.initArray(t) end end
+local function markArray(t) if type(t)=='table' then json.util.InitArray(t) end end
 
 local arrProps = {values=true, options=true, args=true, actions=true}
 local function markRec(t)
@@ -108,7 +108,7 @@ local function markRec(t)
     for k,v in pairs(t) do
       if type(v)=='table' and next(v)==nil then
         if arrProps[k] then
-          json.initArray(v)
+          json.util.InitArray(v)
         else
           --print("Prop with empty table value treated as object:", k)
         end

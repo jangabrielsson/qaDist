@@ -18,7 +18,7 @@ A [Fibaro HC3](https://www.fibaro.com/en/products/home-center-3/) QuickApp that 
 
 ## Installation
 
-1. Download the latest `QADist_vX_Y_Z.fqa` from the [Releases](https://github.com/jangabrielsson/qaDist/releases) page.
+1. Download the latest `.fqa` file from the [qaDist repository](https://github.com/jangabrielsson/qaDist) and import it into your HC3.
 2. Import it into your HC3 via **Settings → QuickApps → Add QuickApp → Import**.
 3. Open the QuickApp and set the `manifestUrl` variable to point to your manifest (see below).
 4. Optionally set `githubToken` if you need more than 60 GitHub API requests per hour.

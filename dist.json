@@ -13,6 +13,18 @@
       "ignore": [
         "userconfig"
       ]
+    },
+    {
+      "name": "EventRunner6",
+      "uid": "f1e8b22e2-3c4b-4d5a-9f6a-7b8c2360e1f2c",
+      "description": "Universal Home Automation Rule system. Create rules triggered by any event, and with any action.",
+      "url": "https://api.github.com/repos/jangabrielsson/EventRunner6/",
+      "fqa": "dist/EventRunner6.fqa",
+      "versionFile": "rule",
+      "versionPattern": "local VERSION = \"([^\"]+)\"",
+      "ignore": [
+        "x.*"
+      ]
     }
   ]
 }

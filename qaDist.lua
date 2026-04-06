@@ -14,9 +14,9 @@
 --%%u:{label="actionStatus",text="Status: idle"}
 
 -- %%proxy:true
---%%save:QADist_v0_1_4.fqa
+--%%save:QADist_v0_1_5.fqa
 
-local VERSION = "0.1.4"
+local VERSION = "0.1.5"
 
 local NEW_INSTANCE = "__new__"
 
@@ -132,9 +132,12 @@ local function arrayifyFqa(fqa)
   return fqa
 end
 
+local MANIFEST_TTL = 30 * 60  -- seconds before catalog is considered stale
+
 function QuickApp:onInit()
 	self.manifest = {}
 	self.catalog = {}
+	self.manifestFetchedAt = nil  -- os.time() when catalog was last loaded
 	self.selectedUid = ""
 	self.selectedInstalledId = ""
 	self.selectedRelease = ""
@@ -268,6 +271,7 @@ function QuickApp:fetchManifest(cb)
 			end
 			self.manifest = { quickApps = allNormalized }
 			self.catalog = allNormalized
+			self.manifestFetchedAt = os.time()
 			cb(true)
 			return
 		end
@@ -960,5 +964,238 @@ function QuickApp:updateInstalledInstance(deviceId, entry, tag, cb)
     end
 
 		cb(true, "applied release " .. tostring(tag) .. " to #" .. tostring(deviceId))
+	end)
+end
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Programmatic API
+-- External QAs can call these methods via fibaro.call(qaDistId, "method", args)
+-- args is a table. Provide callbackId + callbackMethod for async result delivery.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- Fire the callback to the caller, or just log if no caller specified.
+-- result is always a table: { ok=bool, uid=str, msg=str, [extra fields] }
+function QuickApp:apiCallback(args, result)
+	if type(args) == "table" and args.callbackId and args.callbackMethod then
+		local cbId = tonumber(args.callbackId)
+		local cbMethod = tostring(args.callbackMethod)
+		if cbId and cbMethod ~= "" then
+			self:logStep("API callback", "deviceId=" .. tostring(cbId), "method=" .. cbMethod,
+				"ok=" .. tostring(result.ok), tostring(result.msg or ""))
+			fibaro.call(cbId, cbMethod, result)
+			return
+		end
+	end
+	-- No caller — just log
+	if result.ok then
+		self:logStep("API result (no callback)", tostring(result.msg or "ok"))
+	else
+		self:logWarn("API result (no callback)", tostring(result.msg or "error"))
+	end
+end
+
+-- Return the catalog entry for a given uid, or nil.
+function QuickApp:catalogEntryByUid(uid)
+	uid = tostring(uid or "")
+	for _, entry in ipairs(self.catalog) do
+		if entry.uid == uid then
+			return entry
+		end
+	end
+	return nil
+end
+
+-- Ensure catalog is loaded (and not stale). Calls cb() when ready, or
+-- cb(false, err) on failure. Pass refresh=true to force a re-fetch.
+function QuickApp:ensureManifestLoaded(refresh, cb)
+	local age = self.manifestFetchedAt and (os.time() - self.manifestFetchedAt) or math.huge
+	if not refresh and #self.catalog > 0 and age < MANIFEST_TTL then
+		cb(true)
+		return
+	end
+	self:fetchManifest(function(ok, err)
+		if not ok then
+			cb(false, err)
+			return
+		end
+		cb(true)
+	end)
+end
+
+-- Resolve "latest" / nil tag to the first release tag for an entry.
+-- Calls cb(true, tag) or cb(false, err).
+function QuickApp:resolveTag(entry, tag, cb)
+	if tag ~= nil and tag ~= "" and tag ~= "latest" then
+		cb(true, tag)
+		return
+	end
+	-- Use cached releases if available, otherwise fetch
+	local cached = self.releasesByUid[entry.uid]
+	if cached and #cached > 0 then
+		cb(true, cached[1].tag)
+		return
+	end
+	self:fetchReleasesForEntry(entry, function(ok, err)
+		if not ok then
+			cb(false, "could not fetch releases: " .. tostring(err))
+			return
+		end
+		local releases = self.releasesByUid[entry.uid]
+		if not releases or #releases == 0 then
+			cb(false, "no releases found for " .. tostring(entry.name))
+			return
+		end
+		cb(true, releases[1].tag)
+	end)
+end
+
+-- ─── apiListReleases ──────────────────────────────────────────────────────────
+-- args: { uid=str, [refresh=bool], [callbackId=N, callbackMethod=str] }
+-- result: { ok=true, uid=str, releases={{tag=str,name=str},...} }
+--      or { ok=false, uid=str, msg=str }
+function QuickApp:apiListReleases(args)
+	if type(args) ~= "table" then args = {} end
+	local uid = tostring(args.uid or "")
+	self:logStep("apiListReleases", "uid=" .. uid)
+
+	self:ensureManifestLoaded(args.refresh == true, function(ok, err)
+		if not ok then
+			self:apiCallback(args, { ok=false, uid=uid, msg="manifest error: " .. tostring(err) })
+			return
+		end
+		local entry = self:catalogEntryByUid(uid)
+		if not entry then
+			self:apiCallback(args, { ok=false, uid=uid, msg="uid not found in catalog" })
+			return
+		end
+		self:fetchReleasesForEntry(entry, function(rok, rerr)
+			if not rok then
+				self:apiCallback(args, { ok=false, uid=uid, msg="releases fetch failed: " .. tostring(rerr) })
+				return
+			end
+			local releases = self.releasesByUid[uid] or {}
+			self:apiCallback(args, { ok=true, uid=uid, releases=releases })
+		end)
+	end)
+end
+
+-- ─── apiInstall ───────────────────────────────────────────────────────────────
+-- Install a new instance of a QA from the manifest.
+-- args: { uid=str, [tag=str|"latest"], [refresh=bool],
+--         [callbackId=N, callbackMethod=str] }
+-- result: { ok=true, uid=str, deviceId=N, tag=str, msg=str }
+--      or { ok=false, uid=str, msg=str }
+function QuickApp:apiInstall(args)
+	if type(args) ~= "table" then args = {} end
+	local uid = tostring(args.uid or "")
+	self:logStep("apiInstall", "uid=" .. uid, "tag=" .. tostring(args.tag or "latest"))
+
+	if self.installBusy then
+		self:apiCallback(args, { ok=false, uid=uid, msg="busy" })
+		return
+	end
+
+	self:ensureManifestLoaded(args.refresh == true, function(ok, err)
+		if not ok then
+			self:apiCallback(args, { ok=false, uid=uid, msg="manifest error: " .. tostring(err) })
+			return
+		end
+		local entry = self:catalogEntryByUid(uid)
+		if not entry then
+			self:apiCallback(args, { ok=false, uid=uid, msg="uid not found in catalog" })
+			return
+		end
+		self:resolveTag(entry, args.tag, function(tok, resolvedTag)
+			if not tok then
+				self:apiCallback(args, { ok=false, uid=uid, msg=resolvedTag })
+				return
+			end
+			self.installBusy = true
+			self:createNewInstance(entry, resolvedTag, function(iok, msg)
+				self.installBusy = false
+				if not iok then
+					self:apiCallback(args, { ok=false, uid=uid, tag=resolvedTag, msg=msg })
+					return
+				end
+				-- Extract new device id from msg ("new instance created #NNN")
+				local newId = tonumber(msg:match("#(%d+)"))
+				self:apiCallback(args, { ok=true, uid=uid, tag=resolvedTag, deviceId=newId, msg=msg })
+				self:loadInstalledForUid(uid)
+			end)
+		end)
+	end)
+end
+
+-- ─── apiUpdate ────────────────────────────────────────────────────────────────
+-- Update an existing installed QA instance.
+-- args: { deviceId=N, uid=str, [tag=str|"latest"], [force=bool], [refresh=bool],
+--         [callbackId=N, callbackMethod=str] }
+--   force=false (default): skip update if installed version == target tag
+--   force=true:  always apply, even if versions match
+-- result: { ok=true, uid=str, deviceId=N, tag=str, upToDate=bool, msg=str }
+--      or { ok=false, uid=str, msg=str }
+function QuickApp:apiUpdate(args)
+	if type(args) ~= "table" then args = {} end
+	local uid = tostring(args.uid or "")
+	local deviceId = tonumber(args.deviceId)
+	local force = args.force == true
+	self:logStep("apiUpdate", "uid=" .. uid, "deviceId=" .. tostring(deviceId),
+		"tag=" .. tostring(args.tag or "latest"), "force=" .. tostring(force))
+
+	if not deviceId then
+		self:apiCallback(args, { ok=false, uid=uid, msg="deviceId required" })
+		return
+	end
+	if self.installBusy then
+		self:apiCallback(args, { ok=false, uid=uid, msg="busy" })
+		return
+	end
+
+	self:ensureManifestLoaded(args.refresh == true, function(ok, err)
+		if not ok then
+			self:apiCallback(args, { ok=false, uid=uid, msg="manifest error: " .. tostring(err) })
+			return
+		end
+		local entry = self:catalogEntryByUid(uid)
+		if not entry then
+			self:apiCallback(args, { ok=false, uid=uid, msg="uid not found in catalog" })
+			return
+		end
+		self:resolveTag(entry, args.tag, function(tok, resolvedTag)
+			if not tok then
+				self:apiCallback(args, { ok=false, uid=uid, msg=resolvedTag })
+				return
+			end
+
+			-- Version check (skip if force=true or no version info in manifest)
+			local hasVersionInfo = entry.versionFile ~= "" and entry.versionPattern ~= ""
+			if not force and hasVersionInfo then
+				local installedVer = self:extractVersionFromQa(deviceId, entry.versionFile, entry.versionPattern)
+				-- Normalise tag for comparison: strip leading "v" to match bare semver
+				local tagVer = resolvedTag:match("^v?(.+)$") or resolvedTag
+				if installedVer and installedVer == tagVer then
+					self:logStep("apiUpdate: already at", resolvedTag, "- skipping")
+					self:apiCallback(args, {
+						ok=true, uid=uid, deviceId=deviceId, tag=resolvedTag,
+						upToDate=true, msg="already at " .. resolvedTag
+					})
+					return
+				end
+			end
+
+			self.installBusy = true
+			self:updateInstalledInstance(deviceId, entry, resolvedTag, function(uok, msg)
+				self.installBusy = false
+				if not uok then
+					self:apiCallback(args, { ok=false, uid=uid, deviceId=deviceId, tag=resolvedTag, msg=msg })
+					return
+				end
+				self:apiCallback(args, {
+					ok=true, uid=uid, deviceId=deviceId, tag=resolvedTag,
+					upToDate=false, msg=msg
+				})
+				self:loadInstalledForUid(uid)
+			end)
+		end)
 	end)
 end

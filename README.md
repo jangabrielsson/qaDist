@@ -184,6 +184,110 @@ When you press **Apply** with an existing installed instance selected:
 
 ---
 
+## Programmatic API
+
+Other QuickApps can call QA Dist Manager via `fibaro.call` to install or update QuickApps automatically — for example to self-update on a daily timer.
+
+Because `fibaro.call` is fire-and-forget, results are delivered asynchronously. Pass `callbackId` and `callbackMethod` in the args table; QA Dist Manager will call `fibaro.call(callbackId, callbackMethod, result)` when finished.
+
+### Methods
+
+#### `apiListReleases(args)`
+
+Fetch the available releases for a QuickApp.
+
+| Arg | Type | Description |
+|-----|------|-------------|
+| `uid` | string | **Required.** UID of the QuickApp as listed in the manifest. |
+| `refresh` | bool | `true` to force a manifest re-fetch even if the cache is fresh. Default `false`. |
+| `callbackId` | number | Device ID of the QuickApp to call back. |
+| `callbackMethod` | string | Method name to call on the callback device. |
+
+Result:
+```lua
+{ ok=true,  uid="...", releases={{tag="v1.2.0", name="..."}, ...} }
+{ ok=false, uid="...", msg="error description" }
+```
+
+#### `apiInstall(args)`
+
+Download and install a new instance of a QuickApp.
+
+| Arg | Type | Description |
+|-----|------|-------------|
+| `uid` | string | **Required.** UID of the QuickApp. |
+| `tag` | string | Release tag to install. `"latest"` or omit for the newest release. |
+| `refresh` | bool | Force manifest re-fetch. Default `false`. |
+| `callbackId` | number | Callback device ID. |
+| `callbackMethod` | string | Callback method name. |
+
+Result:
+```lua
+{ ok=true,  uid="...", tag="v1.2.0", deviceId=42, msg="..." }
+{ ok=false, uid="...", msg="error description" }
+```
+
+#### `apiUpdate(args)`
+
+Update an existing installed instance.
+
+When `force=false` (the default) and the manifest entry has `versionFile`/`versionPattern` set, QA Dist Manager reads the running version and skips the update if it already matches the target tag.
+
+| Arg | Type | Description |
+|-----|------|-------------|
+| `deviceId` | number | **Required.** Device ID of the installed instance. |
+| `uid` | string | **Required.** UID of the QuickApp in the manifest. |
+| `tag` | string | Target release tag. `"latest"` or omit for the newest release. |
+| `force` | bool | `true` to update even if already on the target version. Default `false`. |
+| `refresh` | bool | Force manifest re-fetch. Default `false`. |
+| `callbackId` | number | Callback device ID. |
+| `callbackMethod` | string | Callback method name. |
+
+Result:
+```lua
+{ ok=true,  uid="...", deviceId=42, tag="v1.2.0", upToDate=false, msg="..." }
+{ ok=true,  uid="...", deviceId=42, tag="v1.2.0", upToDate=true,  msg="already at v1.2.0" }
+{ ok=false, uid="...", msg="error description" }
+```
+
+### Self-updating QuickApp example
+
+```lua
+local QADIST_ID  = 10   -- device ID of your QA Dist Manager instance
+local MY_UID     = "com.example.MyQuickApp"
+
+function QuickApp:onInit()
+    -- Check for updates every 24 hours
+    setInterval(function() self:checkForUpdate() end, 24 * 60 * 60 * 1000)
+    self:checkForUpdate()
+end
+
+function QuickApp:checkForUpdate()
+    fibaro.call(QADIST_ID, "apiUpdate", {
+        deviceId     = self.id,
+        uid          = MY_UID,
+        tag          = "latest",
+        force        = false,
+        callbackId   = self.id,
+        callbackMethod = "onUpdateResult",
+    })
+end
+
+function QuickApp:onUpdateResult(result)
+    if result.upToDate then
+        self:debug("Already at " .. result.tag .. " — no update needed.")
+    elseif result.ok then
+        self:debug("Updated to " .. result.tag .. ". HC3 will restart the QA.")
+    else
+        self:error("Update failed: " .. tostring(result.msg))
+    end
+end
+```
+
+> **Note:** `apiInstall` and `apiUpdate` set an internal busy flag while running. Concurrent calls from different devices will receive `{ ok=false, msg="busy" }` until the current operation finishes.
+
+---
+
 ## License
 
 MIT

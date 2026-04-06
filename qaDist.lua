@@ -67,13 +67,35 @@ local function versionAtLeast(have, need)
 	return hPat >= nPat
 end
 
+-- Escape literal control characters in a JSON blob so strict parsers accept it.
+-- Safe to call on compact (non-pretty-printed) JSON where control chars only
+-- appear inside string values (e.g. FQA files with embedded Lua source code).
+local function sanitizeJsonControlChars(blob)
+	return (blob:gsub("%c", function(c)
+		local n = string.byte(c)
+		if n == 10 then return "\\n"
+		elseif n == 13 then return "\\r"
+		elseif n == 9 then return "\\t"
+		elseif n == 8 then return "\\b"
+		elseif n == 12 then return "\\f"
+		else return string.format("\\u%04x", n)
+		end
+	end))
+end
+
 local function safeDecodeJson(blob)
 	if type(blob) ~= "string" or blob == "" then
 		return nil, "empty payload"
 	end
 	local ok, decoded = pcall(json.decode, blob)
 	if not ok or type(decoded) ~= "table" then
-		return nil, "invalid json payload"
+		-- Retry after escaping any bare control characters (e.g. unescaped
+		-- newlines in Lua source embedded in FQA JSON files).
+		local sanitized = sanitizeJsonControlChars(blob)
+		ok, decoded = pcall(json.decode, sanitized)
+		if not ok or type(decoded) ~= "table" then
+			return nil, "invalid json payload"
+		end
 	end
 	return decoded
 end

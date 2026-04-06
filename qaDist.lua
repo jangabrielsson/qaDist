@@ -14,9 +14,9 @@
 --%%u:{label="actionStatus",text="Status: idle"}
 
 --%%proxy:true
---%%save:QADist_v0_1_1.fqa
+--%%save:QADist_v0_1_2.fqa
 
-local VERSION = "0.1.1"
+local VERSION = "0.1.2"
 
 local NEW_INSTANCE = "__new__"
 

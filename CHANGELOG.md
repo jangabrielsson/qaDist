@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.1.9] - 2026-04-07
+
+## Changes in v0.1.9
+
+- Refactor create-release.sh to streamline version management and improve error handling
+
+
+*Generated automatically from git commits*
+
 ## [v0.1.8] - 2026-04-07
 
 ## Changes in v0.1.8

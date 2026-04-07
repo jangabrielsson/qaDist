@@ -144,6 +144,7 @@ function QuickApp:onInit()
 	self.installBusy = false
 	self.releasesByUid = {}
 	self.installedByUid = {}
+	self.downloadTotalByUid = {}
 
 	self:updateView("titleLabel", "text", "QA Dist Manager v" .. VERSION)
 	self:refreshAll()
@@ -393,6 +394,13 @@ function QuickApp:refreshInstalledAndReleases()
 			self:setStatus("release fetch failed: " .. tostring(err))
 			return
 		end
+		-- Update description with total download count if available
+		local total = self.downloadTotalByUid[entry.uid]
+		local desc = entry.description
+		if total and total > 0 then
+			desc = desc .. "\nTotal downloads: " .. tostring(total)
+		end
+		self:updateView("qaDescription", "text", desc)
 		self:setStatus("ready")
 	end)
 end
@@ -504,15 +512,25 @@ function QuickApp:fetchReleasesForEntry(entry, cb)
 		end
 
 		local releases = {}
+		local grandTotal = 0
 		for _, rel in ipairs(payload) do
 			local tag = tostring(rel.tag_name or "")
 			if tag ~= "" then
+				local dlCount = 0
+				if type(rel.assets) == "table" then
+					for _, asset in ipairs(rel.assets) do
+						dlCount = dlCount + (tonumber(asset.download_count) or 0)
+					end
+				end
+				grandTotal = grandTotal + dlCount
 				releases[#releases + 1] = {
 					tag = tag,
-					name = tostring(rel.name or tag)
+					name = tostring(rel.name or tag),
+					downloads = dlCount
 				}
 			end
 		end
+		self.downloadTotalByUid[entry.uid] = grandTotal
 
 		if #releases == 0 then
 			local tagsUrl = entry.url .. "/tags"
@@ -555,9 +573,13 @@ function QuickApp:commitReleaseOptions(uid, releases)
 	local options = {}
 	for i, release in ipairs(releases) do
 		if i > MAX_RELEASES then break end
+		local label = release.name
+		if release.downloads and release.downloads > 0 then
+			label = label .. " (" .. tostring(release.downloads) .. " ↓)"
+		end
 		options[#options + 1] = {
 			type = "option",
-			text = release.name,
+			text = label,
 			value = release.tag
 		}
 	end

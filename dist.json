@@ -4,6 +4,16 @@
 
   "quickApps": [
     {
+      "name": "QA Dist Manager",
+      "uid": "UPD896450032517893",
+      "description": "Install, upgrade, or downgrade other QuickApps from a GitHub manifest — directly from the HC3 UI. This entry lets QA Dist Manager update itself.",
+      "url": "https://api.github.com/repos/jangabrielsson/qaDist/",
+      "fqa": "QADist.fqa",
+      "versionFile": "qaDist",
+      "versionPattern": "local VERSION = \"([^\"]+)\"",
+      "ignore": []
+    },
+    {
       "name": "Yahue",
       "uid": "UPD896846032517896",
       "description": "This is a quick app that allows you to control your Philips Hue devices as you like. Creates QuickApps for your Philips Hue devices.",

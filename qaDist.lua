@@ -1,5 +1,6 @@
 --%%name:QA Dist Manager
 --%%type:com.fibaro.deviceController
+--%%uid:UPD896450032517893
 --%%description:Install, upgrade, downgrade, or create QuickApps from a GitHub manifest.
 --%%var:manifestUrl="https://raw.githubusercontent.com/jangabrielsson/qaDist/main/dist.json"
 --%%var:githubToken=""
@@ -14,7 +15,6 @@
 --%%u:{label="actionStatus",text="Status: idle"}
 
 -- %%proxy:true
---%%save:QADist_v0_1_5.fqa
 
 local VERSION = "0.1.5"
 

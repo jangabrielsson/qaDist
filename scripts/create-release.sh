@@ -159,22 +159,23 @@ update_version_in_source() {
 # ── Build FQA ─────────────────────────────────────────────────────────────────
 build_fqa() {
     local new_ver=$1
-    local versioned
+    local versioned packed
     versioned=$(versioned_fqa "$new_ver")
+    packed="$REPO_DIR/qaDist.fqa"
 
     info "Building FQA via plua..."
     cd "$REPO_DIR"
-    # plua saves the FQA (--%%save: header) when it starts up
-    plua --fibaro --nodebugger --run-for 1 qaDist.lua 2>/dev/null || true
+    plua -t pack qaDist.lua
 
-    if [ ! -f "$versioned" ]; then
-        error "FQA not created: $versioned"
-        error "Make sure plua is configured with HC3 credentials or can run offline."
+    if [ ! -f "$packed" ]; then
+        error "FQA not created: $packed"
         exit 1
     fi
 
-    # Copy to stable name for the manifest
-    cp "$versioned" "$STABLE_FQA"
+    # Rename to versioned name and copy to stable name
+    cp "$packed" "$versioned"
+    cp "$packed" "$STABLE_FQA"
+    rm -f "$packed"
     success "Created $(basename "$versioned") and QADist.fqa"
 }
 

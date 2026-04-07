@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.1.10] - 2026-04-07
+
+## Changes in v0.1.10
+
+- ✨ **Feature**: add total download count to release descriptions and options
+- ♻️ **Refactor**: streamline release process and update version handling
+
+
+*Generated automatically from git commits*
+
 ## [v0.1.9] - 2026-04-07
 
 ## Changes in v0.1.9

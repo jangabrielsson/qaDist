@@ -16,7 +16,7 @@
 
 -- %%proxy:true
 
-local VERSION = "0.1.6"
+local VERSION = "0.1.7"
 
 local NEW_INSTANCE = "__new__"
 

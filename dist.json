@@ -8,7 +8,7 @@
       "uid": "UPD896450032517893",
       "description": "Install, upgrade, or downgrade other QuickApps from a GitHub manifest — directly from the HC3 UI. This entry lets QA Dist Manager update itself.",
       "url": "https://api.github.com/repos/jangabrielsson/qaDist/",
-      "fqa": "QADist.fqa",
+      "fqa": "qaDist.fqa",
       "versionFile": "qaDist",
       "versionPattern": "local VERSION = \"([^\"]+)\"",
       "ignore": []

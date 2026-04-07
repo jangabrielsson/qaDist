@@ -22,7 +22,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 QA_FILE="$REPO_DIR/qaDist.lua"
-STABLE_FQA="$REPO_DIR/QADist.fqa"
+STABLE_FQA="$REPO_DIR/qaDist.fqa"
 
 # ── Colours ────────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -172,11 +172,9 @@ build_fqa() {
         exit 1
     fi
 
-    # Rename to versioned name and copy to stable name
+    # Copy to versioned name; packed file stays as the stable qaDist.fqa
     cp "$packed" "$versioned"
-    cp "$packed" "$STABLE_FQA"
-    rm -f "$packed"
-    success "Created $(basename "$versioned") and QADist.fqa"
+    success "Created $(basename "$versioned") and qaDist.fqa"
 }
 
 # ── Changelog ─────────────────────────────────────────────────────────────────
@@ -206,7 +204,7 @@ update_changelog() {
 commit_and_push() {
     local version=$1
     cd "$REPO_DIR"
-    git add qaDist.lua QADist.fqa dist.json CHANGELOG.md
+    git add qaDist.lua qaDist.fqa dist.json CHANGELOG.md
     # Stage versioned FQA if it exists
     local versioned
     versioned=$(versioned_fqa "$version")
@@ -238,7 +236,7 @@ create_github_release() {
         --verify-tag)
     success "Release created: $release_url"
 
-    # Upload both FQA files
+    # Upload both FQA files (versioned + stable)
     local versioned
     versioned=$(versioned_fqa "$version")
     for fqa in "$STABLE_FQA" "$versioned"; do

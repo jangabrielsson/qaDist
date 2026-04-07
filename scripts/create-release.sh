@@ -5,12 +5,12 @@
 # What it does:
 #   1. Reads the current version from qaDist.lua
 #   2. Lets you pick a version bump (patch / minor / major / custom)
-#   3. Updates the version in qaDist.lua (local VERSION and --%%save: header)
-#   4. Generates QADist_vX.Y.Z.fqa via plua and copies it to QADist.fqa
+#   3. Updates the version in qaDist.lua
+#   4. Generates qaDist.fqa via plua -t pack
 #   5. Updates CHANGELOG.md
 #   6. Commits all changed files and pushes
 #   7. Creates and pushes a vX.Y.Z git tag
-#   8. Creates a GitHub release and uploads both FQA files
+#   8. Creates a GitHub release and uploads qaDist.fqa
 #
 # Usage:
 #   ./scripts/create-release.sh              # interactive
@@ -44,10 +44,6 @@ get_current_version() {
     grep -E '^local VERSION = ' "$QA_FILE" | head -1 | sed 's/local VERSION = "\(.*\)"/\1/'
 }
 
-versioned_fqa() {
-    local v="${1//\./_}"
-    echo "$REPO_DIR/QADist_v${v}.fqa"
-}
 
 increment_version() {
     local version=$1 type=$2
@@ -145,36 +141,25 @@ generate_release_notes() {
 # ── Update version in qaDist.lua ───────────────────────────────────────────────
 update_version_in_source() {
     local new_ver=$1
-    local safe_ver="${new_ver//./\\.}"
-    local ver_dots="${new_ver//\./_}"
 
     # local VERSION = "x.y.z"
     sed -i.bak "s/^local VERSION = \".*\"/local VERSION = \"${new_ver}\"/" "$QA_FILE"
-    # --%%save:QADist_vX_Y_Z.fqa
-    sed -i.bak "s/^--%%save:QADist_v[0-9_]*\.fqa/--%%save:QADist_v${ver_dots}.fqa/" "$QA_FILE"
     rm -f "${QA_FILE}.bak"
     success "Updated version in qaDist.lua → $new_ver"
 }
 
 # ── Build FQA ─────────────────────────────────────────────────────────────────
 build_fqa() {
-    local new_ver=$1
-    local versioned packed
-    versioned=$(versioned_fqa "$new_ver")
-    packed="$REPO_DIR/qaDist.fqa"
-
     info "Building FQA via plua..."
     cd "$REPO_DIR"
     plua -t pack qaDist.lua
 
-    if [ ! -f "$packed" ]; then
-        error "FQA not created: $packed"
+    if [ ! -f "$STABLE_FQA" ]; then
+        error "FQA not created: $STABLE_FQA"
         exit 1
     fi
 
-    # Copy to versioned name; packed file stays as the stable qaDist.fqa
-    cp "$packed" "$versioned"
-    success "Created $(basename "$versioned") and qaDist.fqa"
+    success "Created qaDist.fqa"
 }
 
 # ── Changelog ─────────────────────────────────────────────────────────────────
@@ -205,10 +190,6 @@ commit_and_push() {
     local version=$1
     cd "$REPO_DIR"
     git add qaDist.lua qaDist.fqa dist.json CHANGELOG.md
-    # Stage versioned FQA if it exists
-    local versioned
-    versioned=$(versioned_fqa "$version")
-    [ -f "$versioned" ] && git add "$(basename "$versioned")"
 
     git commit -m "release: v${version}"
     git push origin "$(git branch --show-current)"
@@ -236,18 +217,12 @@ create_github_release() {
         --verify-tag)
     success "Release created: $release_url"
 
-    # Upload both FQA files (versioned + stable)
-    local versioned
-    versioned=$(versioned_fqa "$version")
-    for fqa in "$STABLE_FQA" "$versioned"; do
-        if [ -f "$fqa" ]; then
-            if gh release upload "v${version}" "$fqa"; then
-                success "Uploaded $(basename "$fqa")"
-            else
-                warning "Failed to upload $(basename "$fqa")"
-            fi
-        fi
-    done
+    # Upload qaDist.fqa
+    if gh release upload "v${version}" "$STABLE_FQA"; then
+        success "Uploaded qaDist.fqa"
+    else
+        warning "Failed to upload qaDist.fqa"
+    fi
 }
 
 # ── Preview mode ───────────────────────────────────────────────────────────────
@@ -344,7 +319,7 @@ main() {
     info "Summary:"
     echo "  Version:  v${new_ver}"
     echo "  Tag:      v${new_ver}"
-    echo "  Artifact: QADist_v${new_ver//\./_}.fqa  +  QADist.fqa"
+    echo "  Artifact: qaDist.fqa"
     echo ""
     read -r -p "Create release? (y/N): " confirm
     [[ ! $confirm =~ ^[yY]$ ]] && { info "Cancelled."; exit 0; }
@@ -354,7 +329,7 @@ main() {
     update_version_in_source "$new_ver"
 
     info "Step 2/6 — Building FQA..."
-    build_fqa "$new_ver"
+    build_fqa
 
     info "Step 3/6 — Updating CHANGELOG.md..."
     update_changelog "$new_ver" "$notes"

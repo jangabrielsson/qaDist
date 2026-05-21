@@ -48,6 +48,19 @@
       "versionPattern": "local VERSION = \"([^\"]+)\"",
       "ignore": [
       ]
+    },
+    {
+      "name": "EventRunner7",
+      "uid": "f1e8b22e2-3c4b-4d6a-9f6a-778c2360e1f2c",
+      "description": "Universal Home Automation Rule system. Create rules triggered by any event, and with any action.",
+      "url": "https://api.github.com/repos/jangabrielsson/EventRunner7/",
+      "fqa": "dist/EventRunner7.fqa",
+      "versionFile": "rule",
+      "versionPattern": "local _VERSION = \"([^\"]+)\"",
+      "ignore": [
+        "main",
+        "x.*"
+      ]
     }
   ]
 }

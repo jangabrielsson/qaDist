@@ -9,6 +9,64 @@ Practical patterns for timers, event polling, HTTP, networking, child devices, a
 
 ---
 
+## Startup Patterns
+
+### Disabled check (the `enabled` flag)
+
+Unchecking a device in the HC3 web UI does NOT stop its QA — the HC3
+starts the QA anyway, and the QA must check the flag itself. Do it first
+in `onInit` and bail before any timers or work are set up:
+
+```lua
+function QuickApp:onInit()
+    self:debug(self.name, self.id)
+    if not api.get("/devices/" .. self.id).enabled then
+        self:debug(self.name, self.id, "Device is disabled")
+        return  -- no timers, no work: the QA stays idle
+    end
+    -- ...start timers and init here...
+end
+```
+
+Re-enabling in the UI restarts the QA (an `enabled` change restarts it,
+like every other device PUT — see hc3-write-safety), so `onInit` runs
+again and the check passes. flua behaves the same: the sim starts a
+disabled QA and `PUT /devices/{id} {enabled = false}` restarts it, so the
+pattern is testable offline exactly as it runs on the HC3.
+
+## Device Lookup — filter on the server
+
+Fetching `/devices` and iterating client-side to find a device by name is a
+common (and wasteful) pattern — on a big HC3 that pulls hundreds of devices
+into the QA. The REST API filters server-side; use them:
+
+```lua
+local qa = api.get("/devices?name=My Helper")[1]          -- by name (case-insensitive exact)
+local qas = api.get("/devices?interface=quickApp")         -- all QuickApps
+local switches = api.get("/devices?type=com.fibaro.binarySwitch")
+local byUuid = api.get("/devices?property=[quickAppUuid," .. HELPER_UUID .. "]")
+local roomLights = api.get("/devices?roomID=1&type=com.fibaro.binarySwitch")
+```
+
+- `?name=` — case-insensitive **exact** match (verified against a live HC3;
+  no substring). **Quirk**: names containing `&` can NOT be matched on the
+  HC3 at all (encoded or raw — both return 0; the controller re-splits on
+  the decoded `&`). Workaround: narrow server-side by `type`/`interface`/
+  `roomID`, then match the name client-side. flua's sim matches the encoded
+  `&` form correctly (and logs a warning) — a deliberate difference.
+- `?property=[name,value]` — the property value is **stringified** and
+  compared to the filter value as a string (Lua-style: booleans are
+  `true`/`false`).
+- Filters combine (`&`), return a **list** (empty, not nil, when nothing
+  matches) — index `[1]` and nil-check before use.
+- Names with spaces need no encoding (verified on a live HC3: raw
+  `?name=Wake on LAN` works). `urlencode(name)` is still worth it for names
+  containing reserved query characters (`&`, `=`, `%`, `#`) — those would
+  corrupt the query unencoded.
+- flua's sim implements the same filter semantics, so the pattern is
+  testable offline. More endpoints and shapes: the hc3-rest-api skill,
+  `assets/devices.md`.
+
 ## Timer Patterns
 
 ### Polling loop (setInterval)
@@ -24,6 +82,36 @@ function QuickApp:poll()
     self:updateProperty("value", getReading())
 end
 ```
+
+### Fixed-rate loop (no drift) — prefer this for scheduled work
+
+`setInterval` chains from *completion*: each cycle takes `interval + work
+time`, so a daily task drifts a few seconds every day and minutes over
+weeks. For anything that must stay on a schedule (00:00:00 runs, hourly
+syncs), target ABSOLUTE times and let each delay absorb the work time:
+
+```lua
+-- fires every `seconds`, on the original cadence — the work time is
+-- compensated, never accumulated
+function QuickApp:loopEvery(seconds, fun)
+    local next = os.time() + seconds
+    local function tick()
+        fun()
+        next = next + seconds
+        setTimeout(tick, math.max(0, (next - os.time()) * 1000))
+    end
+    setTimeout(tick, math.max(0, (next - os.time()) * 1000))
+end
+
+function QuickApp:onInit()
+    self:loopEvery(60, function() self:checkTime() end)
+end
+```
+
+Live example: `examples/drift.lua` shows `setInterval` drifting next to
+this pattern. `os.time()` is whole seconds, so the delay math is
+second-quantized — the cadence is exact on the second, and the leftover
+fraction is re-absorbed every cycle.
 
 ### One-shot delayed action
 ```lua
@@ -230,6 +318,12 @@ self.rss:subscribe(
 
 ## Child Device Patterns
 
+> **Advanced / multi-child QAs**: prefer the **qwikchild** library
+> (`--%%file:$qwikchild.lua,qwikchild`) — UID-based attach-or-create, a class
+> per child, per-child UIs, and `internalStorage` state. The qwikchild skill
+> has the full API; `examples/qwikchildtest.lua` is the self-tested fixture.
+> The patterns below show the manual primitives it builds on.
+
 ### Defining a child class
 ```lua
 class 'MyChild'(QuickAppChild)
@@ -275,7 +369,7 @@ function MyChild:doSomething()
 end
 ```
 
-> **For more advanced child management** — UID-based addressing, declarative `initChildren`, per-child UI, and `internalStorage` per child — use the plua **QwikAppChild** library. Ask `/qwikchild` for full details.
+> **For more advanced child management** — UID-based addressing, declarative `initChildren`, per-child UI, and `internalStorage` per child — use the **QwikAppChild** library. Ask `/qwikchild` for full details.
 
 ---
 
@@ -287,7 +381,7 @@ end
 | **QuickApp variable** (`self:getVariable`) | Yes | Yes | No | User-configurable parameters (API keys, IP addresses, poll intervals) — shown in the QA panel and exported with the QA `.fqa` file |
 | **internalStorage** | No | No | No | Private runtime state that must survive QA restarts but should not be visible or user-editable (e.g. last-seen timestamps, cached values, counters) |
 
-> **Fibaro Global Variables** are the right choice when a value needs to be read or written by more than one QuickApp or Scene.
+> **Fibaro Global Variables** are the right choice when a value needs to be read or written by more than one QuickApp or Scene. Note. They need to be created before they can be set, otherwise attempts to read or write them will fail. api.post("/globalVariables", { name = "HomeMode", value = "Away" }) can be used to create them programmatically.
 
 > **QuickApp variables** are the right choice for settings the user may want to change — they appear in the HC3 UI under the device panel and are bundled into the QA when it is downloaded as a `.fqa` file.
 
@@ -395,20 +489,37 @@ self:turnOn()  -- prefer self:method() over fibaro.call(self.id, ...) for self
 
 ## Scheduler / Time-Based Actions
 
+The naive version — `setInterval` every minute checking the clock — drifts
+by the check's execution time each cycle and can also miss the exact minute
+if the check runs just before it. Use the fixed-rate pattern (above) and
+fire at the exact target instead:
+
 ```lua
-function QuickApp:onInit()
-    setInterval(function() self:checkTime() end, 60000)
+-- Run exactly at every local midnight — recompute the next midnight from
+-- the date each cycle so DST shifts are handled, never +86400 blindly.
+function QuickApp:scheduleMidnight(fun)
+    local function nextMidnightAfter(now)
+        local t = os.date("*t", now)
+        t.hour, t.min, t.sec = 0, 0, 0
+        local midnight = os.time(t)
+        if midnight <= now then
+            -- os.time normalizes day overflow (day 32 -> next month)
+            midnight = os.time{year = t.year, month = t.month, day = t.day + 1, hour = 0, min = 0, sec = 0}
+        end
+        return midnight
+    end
+    local function tick()
+        fun()
+        local now = os.time()
+        setTimeout(tick, math.max(0, (nextMidnightAfter(now) - now) * 1000))
+    end
+    setTimeout(tick, math.max(0, (nextMidnightAfter(os.time()) - os.time()) * 1000))
 end
 
-function QuickApp:checkTime()
-    local hour   = tonumber(os.date("%H"))
-    local minute = tonumber(os.date("%M"))
-
-    if hour == 7 and minute == 0 then
-        fibaro.call(10, "turnOn")
-    elseif hour == 23 and minute == 0 then
-        fibaro.call(10, "turnOff")
-    end
+function QuickApp:onInit()
+    self:scheduleMidnight(function()
+        fibaro.call(10, "turnOff")  -- lights out at 00:00:00
+    end)
 end
 ```
 

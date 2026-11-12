@@ -205,6 +205,12 @@ release channel.
   (template names: `Bug report`, `Feature request`,
   `Feedback / experience report`).
 
+**After filing** — the issue is the end of the local work. The flua agent
+takes it from there: fixes, builds a new release, and installs it on this
+machine if necessary. Don't install, pin, or patch a flua version locally
+in the meantime — many projects on this machine depend on the installed
+flua. Once the agent ships, confirm with `flua --version`.
+
 **Doc/skill corrections**: flua's `.github/skills/` is the canonical
 source for the skill files this project mirrors (the wheel's
 `setup_templates` are synced from there via `scripts/sync-skills.sh`).
@@ -241,7 +247,10 @@ it to the invariant flua violated:
    this machine — file an upstream issue instead (see "Reporting issues
    to the flua repo" above).
 
-**Hygiene after instrumenting an installed flua:** find the live copy with
-`python -m pip show fibaro-flua`, and reset it with
-`python -m pip install --force-reinstall fibaro-flua==<version>` —
-site-packages edits outlive the session and poison later runs.
+**Hygiene**: don't instrument site-packages on this machine — the
+installed flua serves many projects, and edits outlive the session. If a
+session did leave edits behind, find the live copy with
+`python -m pip show fibaro-flua` and reset it with
+`python -m pip install --force-reinstall fibaro-flua==<version>` — and
+file the underlying flua problem upstream instead (see "Reporting issues
+to the flua repo" above).

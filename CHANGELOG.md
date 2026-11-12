@@ -1,5 +1,25 @@
 # Changelog
 
+## [v0.1.11] - 2026-11-12
+
+## Changes in v0.1.11
+
+- 📚 **Docs**: mirror the flua 0.1.155 skill updates
+- 📚 **Docs**: record the pack-bug root cause in code comment and skills
+- 📚 **Docs**: complete the flua issue loop — agent releases and installs
+- 📚 **Docs**: issues-only policy for the flua repo
+- 📚 **Docs**: add upstream issue-reporting guide to the flua-troubleshooting skill
+- 🐛 **Fix**: keep the JSON create and ensure the apiVersion marker
+- chore: migrate release helper from plua to flua
+- ✨ **Feature**: add HassQA to the dist manifest
+- 🐛 **Fix**: create new QA instances through the import endpoint
+- 📚 **Docs**: capture import endpoint, loopback API, hub profiles, and QA patterns in skills
+- ✨ **Feature**: add net module with HTTP, TCP, UDP, and WebSocket client classes feat: create .luarc.json for Lua language server configuration chore: remove outdated commit examples from .vscode chore: add recommended extensions for VSCode in extensions.json feat: add code snippets for QuickApp development in flua.code-snippets feat: update launch configurations for flua debugging in launch.json chore: remove legacy settings.json file feat: add task for uploading files to HC3 in tasks.json docs: create AGENTS.md for QuickApp development guidance chore: update dist.json to reflect new version file naming
+- ✨ **Feature**: add EventRunner7 QuickApp with updated version handling
+
+
+*Generated automatically from git commits*
+
 ## [v0.1.10] - 2026-04-07
 
 ## Changes in v0.1.10

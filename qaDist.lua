@@ -14,7 +14,7 @@
 --%%u:{{button="refreshBtn",text="Refresh",onReleased="onRefresh"},{button="installBtn",text="Apply",onReleased="onApply"}}
 --%%u:{label="actionStatus",text="Status: idle"}
 
-local VERSION = "0.1.10"
+local VERSION = "0.1.11"
 
 local NEW_INSTANCE = "__new__"
 

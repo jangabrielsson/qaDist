@@ -331,19 +331,6 @@ api.post("/foo", { ids = json.util.InitArray({}) })
 
 #### Fields that MUST be array-encoded when uploading an FQA
 
-> **Note:** the JSON `POST /quickApp` create preserves the package
-> verbatim as long as `initialProperties.apiVersion` is set (current
-> flua's pack adds it — an older pack omitted it, so downloaded
-> artifacts from that era may lack it — and hand-built structures must
-> add it themselves). Without
-> the marker the HC3 treats the package as legacy and re-derives
-> uiCallbacks with generated default names. `POST /quickApp/import`
-> (multipart/form-data, the web UI's wire format) always preserves the
-> package — see the **hc3-rest-api** skill. The array-encoding below
-> applies when building an FQA structure for the JSON create path
-> (e.g. `parity_capture`), or when PUT-ing array-valued properties
-> back to `/api/devices/{id}`.
-
 When building an FQA structure to POST to `/api/quickApp/`, several
 nested fields are array-typed on HC3. If any of them is empty (or
 sparse), the JSON encoder will emit `{}` and HC3 will reject the upload
@@ -359,8 +346,18 @@ markArray(fqa.initialProperties.uiView)
 markArray(fqa.initialProperties.uiCallbacks)
 markArray(fqa.initialProperties.supportedDeviceRoles)
 
+fqa.initialProperties.apiVersion = "1.3"
 api.post("/quickApp/", json.encode(fqa))
 ```
+
+A hand-built package must also carry `initialProperties.apiVersion`
+("1.3"): the JSON create preserves a marked package verbatim — custom
+`uiCallbacks` included — while a marker-less package is treated as
+legacy and its UI callbacks are re-derived with generated default names
+(`ui<b2>OnReleased`, buttons die with "Class does not have uib2OnReleased
+function defined"). flua's own pack writes the marker automatically, and
+`POST /quickApp/import` preserves verbatim regardless of it — see the
+hc3-rest-api skill.
 
 The same care applies whenever you PUT an array-valued property back to
 `/api/devices/{id}` (e.g. `properties.quickAppVariables`,

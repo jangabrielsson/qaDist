@@ -96,19 +96,17 @@ function QuickApp:modeToggled(event)
 end
 ```
 
-**Buttons call `uib2OnReleased` instead of your handler?** The package
-was created without the `initialProperties.apiVersion` marker — the HC3
-treats such a package as legacy and re-derives uiCallbacks with
-generated default names on recent firmware (live-verified 5.22x): custom
-handlers get dropped and taps log "Class does not have uib2OnReleased
-function defined". With the marker set, the JSON `POST /quickApp` create
-preserves the package verbatim (flua's `--tool pack` adds it in current
-versions — an older pack omitted it, which is how these packages happen;
-hand-built structures must add `initialProperties.apiVersion = "1.3"`
-themselves). Fix an already-mangled QA by recreating it with the marker,
-or re-import the package via the HC3 web UI's Import button / flua's
-`--tool uploadFQA` (`POST /quickApp/import` preserves the package, marker
-or not — see the hc3-rest-api skill).
+**Buttons call `uib2OnReleased` instead of your handler?** The QA was
+created from a package without `initialProperties.apiVersion` — on recent
+firmware (live-verified 5.22x) the HC3's JSON `POST /quickApp`
+API-create treats marker-less packages as legacy and re-derives
+uiCallbacks with generated default names, so custom handlers get dropped
+and taps log "Class does not have uib2OnReleased function defined". Fix
+it by adding the marker (`initialProperties.apiVersion = "1.3"` — flua's
+pack writes it) and re-creating through the JSON API — or re-import the
+package, which preserves it verbatim regardless: via the HC3 web UI's
+Import button or flua's `--tool uploadFQA`/`uploadQA` (both use
+`POST /quickApp/import` — see the hc3-rest-api skill).
 
 ## Asserting and driving UI state in tests
 

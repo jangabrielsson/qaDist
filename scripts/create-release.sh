@@ -6,7 +6,7 @@
 #   1. Reads the current version from qaDist.lua
 #   2. Lets you pick a version bump (patch / minor / major / custom)
 #   3. Updates the version in qaDist.lua
-#   4. Generates qaDist.fqa via plua -t pack
+#   4. Generates qaDist.fqa via flua --tool pack
 #   5. Updates CHANGELOG.md
 #   6. Commits all changed files and pushes
 #   7. Creates and pushes a vX.Y.Z git tag
@@ -63,13 +63,13 @@ get_last_tag() { git -C "$REPO_DIR" describe --tags --abbrev=0 2>/dev/null || ec
 check_dependencies() {
     info "Checking dependencies..."
     local missing=()
-    for cmd in git plua gh; do
+    for cmd in git flua gh; do
         command_exists "$cmd" || missing+=("$cmd")
     done
     if [ ${#missing[@]} -ne 0 ]; then
         error "Missing: ${missing[*]}"
         echo "  git:  https://git-scm.com"
-        echo "  plua: pip install plua"
+        echo "  flua: see https://github.com/jangabrielsson/flua"
         echo "  gh:   https://cli.github.com"
         exit 1
     fi
@@ -150,9 +150,9 @@ update_version_in_source() {
 
 # ── Build FQA ─────────────────────────────────────────────────────────────────
 build_fqa() {
-    info "Building FQA via plua..."
+    info "Building FQA via flua..."
     cd "$REPO_DIR"
-    plua -t pack qaDist.lua
+    flua --tool pack qaDist.lua -o "$STABLE_FQA" -f
 
     if [ ! -f "$STABLE_FQA" ]; then
         error "FQA not created: $STABLE_FQA"

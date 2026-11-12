@@ -160,9 +160,12 @@ side of the story.
 ## Reporting issues to the flua repo
 
 When the diagnosis lands in flua itself — emulator behavior, tooling, or
-the bundled docs/skills — file it upstream at
-**github.com/jangabrielsson/flua** rather than fixing it locally (local
-site-packages edits outlive the session and poison later runs).
+the bundled docs/skills — file an issue upstream at
+**github.com/jangabrielsson/flua**. Never patch the flua repo checkout or
+the installed package on this machine: many projects here depend on the
+installed flua, and the repo is maintained separately — an issue lets the
+flua maintainer (agent) land the fix and ship it through the normal
+release channel.
 
 **Before filing**
 - Confirm on the latest version: `flua --version`. Reports against older
@@ -205,9 +208,9 @@ site-packages edits outlive the session and poison later runs).
 **Doc/skill corrections**: flua's `.github/skills/` is the canonical
 source for the skill files this project mirrors (the wheel's
 `setup_templates` are synced from there via `scripts/sync-skills.sh`).
-A correction to a skill or doc belongs upstream in the flua repo — file
-the issue (or PR) there, then mirror the wording into this project's
-`.github/skills/` so the copies don't drift apart.
+File the issue there and let the maintainer land it; once the fix ships,
+mirror the wording into this project's `.github/skills/` so the copies
+don't drift apart.
 
 ## Bridge errors: "lost reference" and friends
 
@@ -233,8 +236,10 @@ it to the invariant flua violated:
    — that structure is the root cause's shape.
 3. Compare against the table → identify the violated invariant.
 4. Locate the state write or route that created it, fix it (independent
-   copies at the write site), add a regression test. If the fix is in
-   flua itself, follow the repo's conventions (pinning tests).
+   copies at the write site), add a regression test. If the fix belongs
+   in flua itself, do NOT patch the repo or the installed package on
+   this machine — file an upstream issue instead (see "Reporting issues
+   to the flua repo" above).
 
 **Hygiene after instrumenting an installed flua:** find the live copy with
 `python -m pip show fibaro-flua`, and reset it with

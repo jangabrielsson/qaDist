@@ -331,13 +331,16 @@ api.post("/foo", { ids = json.util.InitArray({}) })
 
 #### Fields that MUST be array-encoded when uploading an FQA
 
-> **Note:** the preferred import path is `POST /quickApp/import`
-> (multipart/form-data, the web UI's wire format) — see the
-> **hc3-rest-api** skill. On recent firmware the JSON `POST /quickApp`
-> create re-derives uiCallbacks with generated default names and breaks
-> custom UI handlers. The array-encoding below applies when building an
-> FQA structure for the JSON create path (e.g. `parity_capture`), or
-> when PUT-ing array-valued properties back to `/api/devices/{id}`.
+> **Note:** the JSON `POST /quickApp` create preserves the package
+> verbatim as long as `initialProperties.apiVersion` is set (flua's
+> pack adds it; hand-built structures must add it themselves). Without
+> the marker the HC3 treats the package as legacy and re-derives
+> uiCallbacks with generated default names. `POST /quickApp/import`
+> (multipart/form-data, the web UI's wire format) always preserves the
+> package — see the **hc3-rest-api** skill. The array-encoding below
+> applies when building an FQA structure for the JSON create path
+> (e.g. `parity_capture`), or when PUT-ing array-valued properties
+> back to `/api/devices/{id}`.
 
 When building an FQA structure to POST to `/api/quickApp/`, several
 nested fields are array-typed on HC3. If any of them is empty (or

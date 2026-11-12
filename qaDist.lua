@@ -43,12 +43,6 @@ local function encodeUriComponent(value)
 	end))
 end
 
-local function sanitizeFilename(text)
-	local cleaned = (tostring(text):gsub("[^%w]+", "_"))
-	cleaned = (cleaned:gsub("^_+", ""):gsub("_+$", ""))
-	return cleaned ~= "" and cleaned or "qa"
-end
-
 local function matchesIgnore(fileName, ignoreList)
 	if type(ignoreList) ~= "table" then return false end
 	for _, pattern in ipairs(ignoreList) do
@@ -760,64 +754,41 @@ function QuickApp:createNewInstance(entry, tag, cb)
 			return
 		end
 
-		local filename = sanitizeFilename(entry.name) .. ".fqa"
-		self:importFqa(fqaBlobOrErr, filename, function(httpErr, status, body)
-			if httpErr then
-				cb(false, "import failed: " .. httpErr)
-				return
-			end
-			if status ~= 200 and status ~= 201 then
-				cb(false, "import status " .. tostring(status))
-				return
-			end
-			local result = safeDecodeJson(body)
-			local importedId = type(result) == "table" and (result.id or result.deviceId)
-			if importedId then
-				self:logStep("Import response", "deviceId=" .. tostring(importedId))
-				cb(true, "new instance created #" .. tostring(importedId))
-			else
-				self:logStep("Import response", "no device id in body")
-				cb(true, "new instance imported")
-			end
-		end)
-	end)
-end
-
--- POST an .fqa to the HC3's import endpoint (the web UI's wire format).
--- The JSON POST /quickApp create re-derives uiCallbacks with generated
--- default names on recent firmware, which breaks custom UI handlers — the
--- multipart import preserves the package verbatim. A QA reaches the
--- controller through its credential-free loopback API on port 11111 (flua's
--- online mode rewrites that to the real HC3 with the configured credentials).
-function QuickApp:importFqa(fqaBlob, filename, cb)
-	local boundary = "----qaDist" .. string.format("%08x", os.time()) .. string.format("%08x", math.random(0x7FFFFFFF))
-	local body = "--" .. boundary .. "\r\n"
-		.. 'Content-Disposition: form-data; name="file"; filename="' .. filename .. '"\r\n'
-		.. "Content-Type: application/octet-stream\r\n"
-		.. "\r\n"
-		.. fqaBlob .. "\r\n"
-		.. "--" .. boundary .. "--\r\n"
-
-	self:logStep("Importing fqa", "endpoint=/quickApp/import", "bytes=" .. tostring(#fqaBlob))
-
-	local client = net.HTTPClient({ timeout = 30000 })
-	client:request("http://127.0.0.1:11111/api/quickApp/import", {
-		options = {
-			method = "POST",
-			headers = {
-				["Accept"] = "application/json",
-				["Content-Type"] = "multipart/form-data; boundary=" .. boundary,
-				["X-Fibaro-Version"] = "2",
-			},
-			data = body,
-		},
-		success = function(response)
-			cb(nil, response.status, response.data)
-		end,
-		error = function(err)
-			cb(tostring(err), nil, nil)
+		local fqa, decodeErr = safeDecodeJson(fqaBlobOrErr)
+		if not fqa then
+			self:logWarn("Create-new decode failed", decodeErr)
+			cb(false, decodeErr)
+			return
 		end
-	})
+		arrayifyFqa(fqa)
+
+		-- The HC3's JSON create (POST /quickApp) treats a package without
+		-- initialProperties.apiVersion as legacy and re-derives its
+		-- uiCallbacks with generated default names, dropping custom button
+		-- handlers. Ensure the marker is present before posting.
+		if type(fqa.initialProperties) ~= "table" then
+			fqa.initialProperties = {}
+		end
+		if not fqa.initialProperties.apiVersion then
+			fqa.initialProperties.apiVersion = "1.3"
+		end
+
+		self:logStep("Posting full fqa object", "endpoint=/quickApp", "payloadBytes=" .. tostring(#fqaBlobOrErr))
+
+		local imported, status, err = self:apiCall("post", "/quickApp", fqa)
+		if not imported then
+			cb(false, "create failed: " .. tostring(err or status))
+			return
+		end
+		local importedId = imported and (imported.id or imported.deviceId)
+		if importedId then
+			self:logStep("Create response", "deviceId=" .. tostring(importedId), "mode=whole-fqa")
+			cb(true, "new instance created #" .. tostring(importedId))
+		else
+			self:logStep("Create response", "no device id in body", "mode=whole-fqa")
+			cb(true, "new instance imported")
+		end
+	end)
 end
 
 function QuickApp:extractFilesFromFqa(fqaBlob, ignoreList)

@@ -158,28 +158,37 @@ api.put("/quickApp/42/files/main", {
 })
 ```
 
-### Creating a QuickApp — use the IMPORT endpoint
+### Creating a QuickApp — the JSON create, and the apiVersion marker
 
-**`POST /api/quickApp/import` preserves an .fqa package verbatim — use it
-to create QAs. The JSON `POST /api/quickApp` create RE-DERIVES the UI
+**`POST /api/quickApp` (JSON body, the .fqa structure) re-derives the UI
 callbacks with generated default names (`ui<b2>OnReleased`) on recent
-firmware (live-verified 5.22x): custom `onReleased='zoneDownButton'`
-handlers get dropped, buttons die with "Class does not have
-uib2OnReleased function defined - action ignored".**
+firmware (live-verified 5.22x) — but ONLY for packages missing
+`initialProperties.apiVersion`. With the marker present the create
+preserves the package verbatim.** The HC3 treats a package without it as
+legacy. Custom `onReleased='zoneDownButton'` handlers get dropped and
+buttons die with "Class does not have uib2OnReleased function defined -
+action ignored" — that symptom means the posted package lacked the
+marker.
 
-The import endpoint is what the HC3 web UI's Import button uses — the
-wire format is `multipart/form-data`:
+- flua's `--tool pack` always writes `initialProperties.apiVersion =
+  "1.3"` into the packages it builds (plua did too — that is why its
+  uploads survived).
+- Code that builds an .fqa structure by hand must add the marker itself:
+  `fqa.initialProperties = fqa.initialProperties or {}` +
+  `fqa.initialProperties.apiVersion = "1.3"` before POSTing.
 
-- part `file` — the .fqa JSON, **with a `filename`** (a filename-less
-  part crashes the import handler with a bodyless HTTP 500);
-- part `roomId` — optional;
-- header `X-Fibaro-Version: 2` rides along like the browser's interceptor.
+The import endpoint (`POST /api/quickApp/import`, multipart/form-data —
+the HC3 web UI's Import button) always preserves the package verbatim,
+marker or not, and stays a fine alternative: part `file` — the .fqa JSON
+**with a `filename`** (a filename-less part crashes the import handler
+with a bodyless HTTP 500); part `roomId` — optional; header
+`X-Fibaro-Version: 2` rides along like the browser's interceptor. flua's
+`--tool uploadFQA`, `--tool uploadQA`, `--tool installHelper`, and the
+proxy deploy use it.
 
-flua's tools already do this: `--tool uploadFQA`, `--tool uploadQA` (new
-QA), `--tool installHelper`, and the proxy deploy all use the import
-endpoint against a real HC3 (the offline sim keeps the JSON create, which
-never re-derives). Symptom elsewhere: a QA whose buttons call
-`uib2OnReleased` was created through the JSON API-create — re-import it.
+Symptom elsewhere: a QA whose buttons call `uib2OnReleased` was created
+from a legacy package without the marker — recreate it through the JSON
+create with `apiVersion` set, or re-import it.
 
 ---
 

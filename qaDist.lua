@@ -765,7 +765,9 @@ function QuickApp:createNewInstance(entry, tag, cb)
 		-- The HC3's JSON create (POST /quickApp) treats a package without
 		-- initialProperties.apiVersion as legacy and re-derives its
 		-- uiCallbacks with generated default names, dropping custom button
-		-- handlers. Ensure the marker is present before posting.
+		-- handlers. An older flua pack omitted the marker, so .fqa
+		-- artifacts from that era on GitHub may still lack it — inject it
+		-- defensively before posting.
 		if type(fqa.initialProperties) ~= "table" then
 			fqa.initialProperties = {}
 		end

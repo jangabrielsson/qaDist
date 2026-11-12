@@ -332,8 +332,10 @@ api.post("/foo", { ids = json.util.InitArray({}) })
 #### Fields that MUST be array-encoded when uploading an FQA
 
 > **Note:** the JSON `POST /quickApp` create preserves the package
-> verbatim as long as `initialProperties.apiVersion` is set (flua's
-> pack adds it; hand-built structures must add it themselves). Without
+> verbatim as long as `initialProperties.apiVersion` is set (current
+> flua's pack adds it — an older pack omitted it, so downloaded
+> artifacts from that era may lack it — and hand-built structures must
+> add it themselves). Without
 > the marker the HC3 treats the package as legacy and re-derives
 > uiCallbacks with generated default names. `POST /quickApp/import`
 > (multipart/form-data, the web UI's wire format) always preserves the

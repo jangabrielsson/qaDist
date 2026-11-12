@@ -102,7 +102,8 @@ treats such a package as legacy and re-derives uiCallbacks with
 generated default names on recent firmware (live-verified 5.22x): custom
 handlers get dropped and taps log "Class does not have uib2OnReleased
 function defined". With the marker set, the JSON `POST /quickApp` create
-preserves the package verbatim (flua's `--tool pack` always adds it;
+preserves the package verbatim (flua's `--tool pack` adds it in current
+versions — an older pack omitted it, which is how these packages happen;
 hand-built structures must add `initialProperties.apiVersion = "1.3"`
 themselves). Fix an already-mangled QA by recreating it with the marker,
 or re-import the package via the HC3 web UI's Import button / flua's

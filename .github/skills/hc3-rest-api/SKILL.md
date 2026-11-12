@@ -170,10 +170,13 @@ buttons die with "Class does not have uib2OnReleased function defined -
 action ignored" — that symptom means the posted package lacked the
 marker.
 
-- flua's `--tool pack` always writes `initialProperties.apiVersion =
+- flua's `--tool pack` writes `initialProperties.apiVersion =
   "1.3"` into the packages it builds (plua did too — that is why its
-  uploads survived).
-- Code that builds an .fqa structure by hand must add the marker itself:
+  uploads survived). An older flua pack omitted the marker: .fqa
+  artifacts from that era lack it and need it added before a JSON
+  create.
+- Code that builds an .fqa structure by hand (or installs one it
+  downloaded) must add the marker itself:
   `fqa.initialProperties = fqa.initialProperties or {}` +
   `fqa.initialProperties.apiVersion = "1.3"` before POSTing.
 

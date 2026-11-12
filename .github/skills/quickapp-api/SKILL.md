@@ -41,6 +41,17 @@ self:updateProperty("log", "status msg") -- update log field
 ```
 Common property names: `value`, `dead`, `log`, `userDescription`.
 
+> **The property set is fixed by the type.** `updateProperty` on a
+> property the device type (and its interfaces) does not declare is
+> **silently ignored on the real HC3** — the QA looks like it works in
+> flua (the sim stores it, with a warning) and does nothing on the
+> controller. Declare what you need: the right `--%%type` or
+> `--%%interface:` (e.g. the `battery` interface declares
+> `batteryLevel`), QuickApp variables for dynamic values
+> (`self:setVariable`/`getVariable`), and `updateView` labels for
+> display. flua warns on both the runtime update and the `--check`
+> literal.
+
 ### QuickApp Variables
 ```lua
 local v = self:getVariable("myKey")   -- returns "" if not found (not nil!)
@@ -319,6 +330,14 @@ api.post("/foo", { ids = json.util.InitArray({}) })
 ```
 
 #### Fields that MUST be array-encoded when uploading an FQA
+
+> **Note:** the preferred import path is `POST /quickApp/import`
+> (multipart/form-data, the web UI's wire format) — see the
+> **hc3-rest-api** skill. On recent firmware the JSON `POST /quickApp`
+> create re-derives uiCallbacks with generated default names and breaks
+> custom UI handlers. The array-encoding below applies when building an
+> FQA structure for the JSON create path (e.g. `parity_capture`), or
+> when PUT-ing array-valued properties back to `/api/devices/{id}`.
 
 When building an FQA structure to POST to `/api/quickApp/`, several
 nested fields are array-typed on HC3. If any of them is empty (or

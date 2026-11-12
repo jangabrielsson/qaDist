@@ -67,12 +67,65 @@ local roomLights = api.get("/devices?roomID=1&type=com.fibaro.binarySwitch")
   testable offline. More endpoints and shapes: the hc3-rest-api skill,
   `assets/devices.md`.
 
+### Resolving names and rooms to device ids
+
+When the user asks for "the light in the bedroom", resolve it — don't
+guess:
+
+1. Dev time: `flua --tool house` (or the MCP `flua_tool` with name
+   `house`) returns every device as `{id, name, type, room}` — match the
+   user's words case-insensitively against name/room/type. If **several
+   devices match, list them and ask which one** — never pick silently.
+2. In the QA code: prefer a runtime lookup over a baked id — the
+   server-side filters above. Ids change when devices are re-included;
+   the homeTable pattern next is the stable-names idiom.
+
+## The homeTable — names in code, ids behind them
+
+Devices change ids when they are removed and re-included on the HC3;
+every QA that hardcodes a numeric id stops working silently. The idiom is
+a **home table**: stable names as keys, ids as values, nested by room —
+`HT.kitchen.light` — kept in ONE place instead of scattered literals.
+
+```lua
+-- stored JSON-encoded in a fibaro global variable (must exist first; the
+-- value is a string — global variables always are):
+local encoded = fibaro.getGlobalVariable("homeTable")
+if not encoded or encoded == "" then
+    -- build once: hand-made, or scanned from the live house
+    local HT = {}
+    for _, d in ipairs(api.get("/devices")) do
+        if d.name == "Bedroom lamp" then
+            HT.bedroom = HT.bedroom or {}
+            HT.bedroom.lamp = d.id
+        end
+    end
+    api.post("/globalVariables", { name = "homeTable", value = json.encode(HT) })
+    encoded = json.encode(HT)
+end
+local HT = json.decode(encoded)
+
+-- the code reads by name; when a device changes id, fix ONE place:
+fibaro.call(HT.bedroom.lamp, "turnOn")
+```
+
+- Hand-made tables are the common case; auto-generation scans `/devices`
+  and matches on stable fields (name, type, room).
+- flua's extension generates the same table as code ("Flua: Generate home
+  table (ht.lua)" — a LuaLS-annotated `HT` table, rooms → names → ids),
+  and the sim seeds global variables via `--seed`/`--%%db`, so the pattern
+  is testable offline.
+- **Scenes cannot use variables in their trigger conditions** — scene
+  declarations must carry literal ids. The homeTable protects QA code,
+  not scene triggers; when a scene drives a QA it hardcodes the QA's id
+  and the QA resolves its own devices by name.
+
 ## Timer Patterns
 
 ### Polling loop (setInterval)
 ```lua
 function QuickApp:onInit()
-    self.pollInterval = tonumber(self:getVariable("interval")) * 1000 or 30000
+    self.pollInterval = (tonumber(self:getVariable("interval")) or 30) * 1000
     setInterval(function() self:poll() end, self.pollInterval)
     self:poll()  -- also run immediately on start
 end
@@ -316,6 +369,55 @@ self.rss:subscribe(
 
 ---
 
+## Mocking a service with a dynamically loaded QA
+
+The recipe for a client QA + a mock-service QA hosted with
+`net.HTTPServer`, loaded at runtime (the Skoda pair is the worked
+example — `examples/Skoda/`). The contracts, learned the hard way:
+
+- **The mock binds a FIXED, deliberately unlikely port** (overridable via
+  a variable). Port discovery between two QAs is the hard part — a
+  published fixed port removes it. If the bind fails, warn and exit:
+  another mock (or service) may already serve the port, and the mock
+  must not pretend.
+- **`server.port` is available immediately after `listen(port, handler)`**
+  — no waiting, no callback.
+- **The client loads the mock only when no url is configured AND `_FLUA`
+  is present** — the whole block sits inside `if _FLUA then ... end`, so
+  the same file runs on a real HC3 (where `_FLUA` is nil and the real
+  url is configured instead):
+
+```lua
+local MOCK_PORT = 18290
+
+function QuickApp:onInit()
+  self.url = first(self:getVariable("url"), nil)
+  if not self.url and _FLUA then
+    self.url = "http://127.0.0.1:" .. MOCK_PORT
+    pcall(_FLUA.loadQAfromFile, _PY.examples_dir .. "/mock.lua", {})
+  end
+  ...
+end
+```
+
+- **Resolving the mock's path**: bundled example files live under
+  `_PY.examples_dir` (the installed `flua.examples` package — pip users
+  included); files shipped next to the QA resolve through
+  `_FLUA.mainPath` (the QA's source dir, trailing slash included).
+  Never `--%%file` the mock into the client — it would ship inside the
+  `.fqa` package.
+- **Readiness**: the loaded QA boots eagerly, but treat the mock as ready
+  after the first successful request, not immediately after the load
+  returns — a nil instance right after `loadQAfromFile` is a real state,
+  not a bug. A bounded retry on the client's first request is the honest
+  pattern.
+- **Lifetime**: the mock keeps itself alive with `_FLUA.keepAlive()` and
+  dies with its QA; the client polls with `setInterval`.
+- **Mock-only defaults must not leak**: credentials defaulting to mock
+  values apply ONLY on the mock path — a configured url is the real
+  service, and missing credentials should warn, not silently call it
+  with mock values.
+
 ## Child Device Patterns
 
 > **Advanced / multi-child QAs**: prefer the **qwikchild** library
@@ -382,6 +484,22 @@ end
 | **internalStorage** | No | No | No | Private runtime state that must survive QA restarts but should not be visible or user-editable (e.g. last-seen timestamps, cached values, counters) |
 
 > **Fibaro Global Variables** are the right choice when a value needs to be read or written by more than one QuickApp or Scene. Note. They need to be created before they can be set, otherwise attempts to read or write them will fail. api.post("/globalVariables", { name = "HomeMode", value = "Away" }) can be used to create them programmatically.
+
+> **Config fallbacks — the empty-string trap.** `self:getVariable(name)`
+> returns `""` (not nil) when the variable is unset, and `""` is
+> **truthy** in Lua — so `getVariable("url") or default` silently yields
+> the empty string, and the QA then calls the API with a broken url.
+> Check explicitly:
+>
+> ```lua
+> local function first(v, fallback)
+>     if v == nil or v == "" then return fallback end
+>     return v
+> end
+> local url = first(self:getVariable("url"), "http://default")
+> -- numbers are safe through tonumber: tonumber("") is nil
+> local port = tonumber(self:getVariable("port")) or 8190
+> ```
 
 > **QuickApp variables** are the right choice for settings the user may want to change — they appear in the HC3 UI under the device panel and are bundled into the QA when it is downloaded as a `.fqa` file.
 
@@ -485,6 +603,24 @@ local val = fibaro.getValue(42, "value")
 self:turnOn()  -- prefer self:method() over fibaro.call(self.id, ...) for self
 ```
 
+### Interface changes restart the QA — guard with hasInterface
+
+`addInterfaces`/`deleteInterfaces` restart the plugin **unconditionally**
+— even when the interface is already present (or absent), so a QA that
+adds its own interfaces in `onInit` loops forever. Gate every change:
+
+```lua
+function QuickApp:onInit()
+    if not self:hasInterface("autoTurnOff") then
+        self:addInterfaces({"autoTurnOff"})
+    end
+end
+```
+
+Only add what is missing (and check before removing); a re-boot after a
+real change is a one-time event, not a loop. The same holds in flua's
+sim.
+
 ---
 
 ## Scheduler / Time-Based Actions
@@ -522,6 +658,42 @@ function QuickApp:onInit()
     end)
 end
 ```
+
+### Sunrise / sunset
+
+Device 1 **is the HC3** — ask it for the sun: `fibaro.getValue(1,
+"sunsetHour")` returns `"HH:MM"` (sunrise likewise). flua's sim computes
+the same fields from the configured location and the virtual clock, so
+`--start`/`--%%time:` tests the sunset moment deterministically.
+
+```lua
+function QuickApp:nextSunset()
+    local h, m = fibaro.getValue(1, "sunsetHour"):match("(%d+):(%d+)")
+    local now = os.date("*t")
+    local t = os.time{year = now.year, month = now.month, day = now.day,
+                       hour = tonumber(h), min = tonumber(m), sec = 0}
+    if t <= os.time() then
+        t = os.time{year = now.year, month = now.month, day = now.day + 1,
+                    hour = tonumber(h), min = tonumber(m), sec = 0}
+    end
+    return t
+end
+
+function QuickApp:onInit()
+    local function arm()
+        setTimeout(function()
+            fibaro.call(HT.bedroom.lamp, "turnOn")  -- the homeTable again
+            arm()                                   -- re-arm for tomorrow
+        end, math.max(0, (self:nextSunset() - os.time()) * 1000))
+    end
+    arm()
+end
+```
+
+For a pure "at sunset, do X" automation, the HC3-native answer is a
+**scene** with a sunset trigger (see the hc3-lua-scenes skill) — no code,
+no drift. A QA timer is for when the QA must do real work around the sun
+(recompute, notify, act on several devices).
 
 ---
 

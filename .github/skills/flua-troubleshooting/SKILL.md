@@ -1,6 +1,6 @@
 ---
 name: flua-troubleshooting
-description: Common flua runtime errors and how to fix them: "online mode requires HC3_URL", HC3 authentication lockout, proxy callbacks not reaching the emulator, busy ports, unknown --%% directive warnings, unknown device types (and the catalog), virtual-time and keep-alive surprises, debugger notes, bridge errors ("lost reference" and friends, with --%%debug:bridge payload dumps), and the machine-readable log surface (--log json, --syslog, /flua/systemLog, /debugMessages, flua-mcp). USE FOR: diagnosing flua startup errors, HC3 connection failures, proxy mode issues, Lua runtime errors, cross-platform remedies for macOS and Windows.
+description: Common flua runtime errors and how to fix them: "online mode requires HC3_URL", HC3 authentication lockout, proxy callbacks not reaching the emulator, busy ports, unknown --%% directive warnings, unknown device types (and the catalog), virtual-time and keep-alive surprises, debugger notes, bridge errors ("lost reference" and friends, with --%%debug:bridge payload dumps), the machine-readable log surface (--log json, --syslog, /flua/systemLog, /debugMessages, flua-mcp), and how to report a flua bug/feature/docs issue upstream. USE FOR: diagnosing flua startup errors, HC3 connection failures, proxy mode issues, Lua runtime errors, cross-platform remedies for macOS and Windows, or filing an issue in the flua repo.
 ---
 
 # flua Troubleshooting
@@ -156,6 +156,58 @@ what the emulator sees (ws adds byte-level websocket traffic). Then: `flua --che
 static issues, the QA's own `self:debug(...)` lines, `--log json` for a
 structured log, and `/flua/systemLog` + `/debugMessages` for the engine's
 side of the story.
+
+## Reporting issues to the flua repo
+
+When the diagnosis lands in flua itself — emulator behavior, tooling, or
+the bundled docs/skills — file it upstream at
+**github.com/jangabrielsson/flua** rather than fixing it locally (local
+site-packages edits outlive the session and poison later runs).
+
+**Before filing**
+- Confirm on the latest version: `flua --version`. Reports against older
+  releases often hit already-fixed behavior — the repo's own feedback
+  template says exactly that.
+- Check existing issues for duplicates:
+  `gh issue list --repo jangabrielsson/flua --state open --search "<symptom>"`
+  — search the symptom (e.g. `uiCallbacks`, `apiVersion`, `loopback`),
+  not just the error text.
+
+**Pick the template** — the repo offers three
+(https://github.com/jangabrielsson/flua/issues/new/choose):
+- **Bug report** — a concrete, reproducible defect. Needs the smallest
+  Lua file/command/test case that reproduces it, plus OS, Python
+  version, flua version or commit, and mode (offline/online/proxy).
+- **Feature request** — a focused improvement: the problem/use case, the
+  smallest useful behavior, what flags/APIs/HC3 behaviors it could
+  affect, alternatives considered.
+- **Feedback / experience report** — "here is what I tried, what worked,
+  what did not" — the right shape for live-verification rounds (the
+  apiVersion/uiCallbacks saga was this kind: one finding per heading,
+  expected vs observed, a minimal repro, the suggested change, and things
+  you could NOT verify marked as such).
+
+**Report hygiene**
+- Minimal repro: the smallest QA plus one command
+  (`flua --step --run-for -N qa.lua` shows it deterministically).
+- Environment: OS, Python version, `flua --version`, mode.
+- Strip credentials: no `HC3_PASSWORD`/tokens/private HC3 details (see
+  hc3-write-safety).
+- One issue per finding.
+
+**Submitting**
+- Web: https://github.com/jangabrielsson/flua/issues/new/choose
+- CLI:
+  `gh issue create --repo jangabrielsson/flua --template "Bug report" --title "..." --body "..."`
+  (template names: `Bug report`, `Feature request`,
+  `Feedback / experience report`).
+
+**Doc/skill corrections**: flua's `.github/skills/` is the canonical
+source for the skill files this project mirrors (the wheel's
+`setup_templates` are synced from there via `scripts/sync-skills.sh`).
+A correction to a skill or doc belongs upstream in the flua repo — file
+the issue (or PR) there, then mirror the wording into this project's
+`.github/skills/` so the copies don't drift apart.
 
 ## Bridge errors: "lost reference" and friends
 

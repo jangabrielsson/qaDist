@@ -61,6 +61,19 @@
         "main",
         "x.*"
       ]
+    },
+    {
+      "name": "HassQA",
+      "uid": "UPD896846032517894",
+      "description": "Home Assistant device importer",
+      "url": "https://api.github.com/repos/jangabrielsson/HassQA/",
+      "fqa": "HassQA.fqa",
+      "versionFile": "main",
+      "versionPattern": "local VERSION = \"([^\"]+)\"",
+      "ignore": [
+        "User",
+        "config"
+      ]
     }
   ]
 }
